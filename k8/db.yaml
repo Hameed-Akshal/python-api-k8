@@ -1,0 +1,79 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: flask_db # This value must match the service name 'db' in postgresql://bookdbadmin:dbpassword@db:5432/bookstore
+  namespace: flask
+spec:
+  ports:
+  - port: 5432
+  clusterIP: None
+  selector:
+    app: flask-postgres
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: flask-postgres
+  namespace: flask
+spec:
+  serviceName: "flask_db"
+  selector:
+    matchLabels:
+      app: flask-postgres
+  template:
+    metadata:
+      labels:
+        app: flask-postgres
+    spec:
+      containers:
+      - name: flask_db
+        image: postgres:13
+        env:
+        - name: PGDATA
+          value: /var/lib/postgresql/data/pgdata
+        envFrom:
+        - secretRef:
+            name: flask-secret
+        ports:
+        - containerPort: 5432
+        volumeMounts:
+        - mountPath: /var/lib/postgresql/data
+          name: postgres-data
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "100Mi"
+          limits:
+            cpu: "500m"
+            memory: "500Mi"
+      volumes:
+      - name: postgres-data
+        persistentVolumeClaim:
+          claimName: postgres-pvc
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-pvc
+  namespace: flask
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: postgres-pv
+spec:
+  capacity:
+    storage: 1Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: manual  # Ensure this matches the storageClassName in the PVC if specified
+  hostPath:
+    path: "/mnt/data/postgres"  # Path on the host where the data will be stored
